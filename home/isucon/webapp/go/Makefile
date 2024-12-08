@@ -6,4 +6,5 @@ DESTDIR=.
 
 .PHONY: build
 build:
+	go mod tidy
 	CGO_ENABLED=0 $(LINUX_TARGET_ENV) $(BUILD) -o $(DESTDIR)/isuride -ldflags "-s -w"
