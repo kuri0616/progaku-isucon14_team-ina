@@ -6,4 +6,4 @@ DESTDIR=.
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 $(LINUX_TARGET_ENV)  $(BUILD) -o $(DESTDIR)/isuride -ldflags "-s -w"
+	CGO_ENABLED=0 $(LINUX_TARGET_ENV) $(BUILD) -o $(DESTDIR)/isuride -ldflags "-s -w"
