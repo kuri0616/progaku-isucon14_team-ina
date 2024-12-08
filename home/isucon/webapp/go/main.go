@@ -8,7 +8,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
-	"github.com/kaz/pprotein/integration/standalone"
 	"log/slog"
 	"net"
 	"net/http"
@@ -71,8 +70,6 @@ func setup() http.Handler {
 	mux := chi.NewRouter()
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
-
-	go standalone.Integrate(":19000")
 
 	mux.HandleFunc("POST /api/initialize", postInitialize)
 
@@ -143,12 +140,6 @@ func postInitialize(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
-
-	go func() {
-		if _, err := http.Get("http://35.79.126.12:9000/api/group/collect"); err != nil {
-			writeError(w, http.StatusBadRequest, err)
-		}
-	}()
 
 	writeJSON(w, http.StatusOK, postInitializeResponse{Language: "go"})
 }
