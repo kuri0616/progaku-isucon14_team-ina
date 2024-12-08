@@ -4,17 +4,17 @@ import (
 	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
+	_ "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
+	"github.com/kaz/pprotein/integration/standalone"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
-
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
-	"github.com/kaz/pprotein/integration/standalone"
 )
 
 var db *sqlx.DB
@@ -58,7 +58,7 @@ func setup() http.Handler {
 	dbConfig.Net = "tcp"
 	dbConfig.DBName = dbname
 	dbConfig.ParseTime = true
-	
+
 	//プリペアドステートメントを無効化
 	dbConfig.InterpolateParams = true
 
