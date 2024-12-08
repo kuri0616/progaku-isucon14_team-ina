@@ -94,6 +94,7 @@ CREATE TABLE rides
 )
   COMMENT = 'ライド情報テーブル';
 ALTER TABLE `rides` ADD INDEX `chair_id_idx` (`chair_id`, `created_at`); 
+ALTER TABLE `rides` ADD INDEX `user_id_and_created_at_idx` (`user_id`, `created_at`); 
 
 DROP TABLE IF EXISTS ride_statuses;
 CREATE TABLE ride_statuses
@@ -136,3 +137,4 @@ CREATE TABLE coupons
   PRIMARY KEY (user_id, code)
 )
   COMMENT 'クーポンテーブル';
+  ALTER TABLE `coupons` ADD INDEX `user_id_and_code` (`user_id`, `code`); 
