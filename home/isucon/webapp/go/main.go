@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -59,6 +58,9 @@ func setup() http.Handler {
 	dbConfig.Net = "tcp"
 	dbConfig.DBName = dbname
 	dbConfig.ParseTime = true
+	
+	//プリペアドステートメントを無効化
+	dbConfig.InterpolateParams = true
 
 	_db, err := sqlx.Connect("mysql", dbConfig.FormatDSN())
 	if err != nil {
