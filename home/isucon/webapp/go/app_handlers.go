@@ -188,15 +188,49 @@ type getAppRidesResponseItemChair struct {
 	Model string `json:"model"`
 }
 
+type getAppRidesRiseCharOwner struct {
+	RideId               string    `db:"r_id"`
+	PickupLatitude       int       `db:"pickup_latitude"`
+	PickupLongitude      int       `db:"pickup_longitude"`
+	DestinationLatitude  int       `db:"destination_latitude"`
+	DestinationLongitude int       `db:"destination_longitude"`
+	Evaluation           *int      `db:"evaluation"`
+	CreatedAt            time.Time `db:"created_at"`
+	UpdatedAt            time.Time `db:"updated_at"`
+	ChairId              string    `db:"c_id"`
+	OwnerName            string    `db:"o_name"`
+	ChairName            string    `db:"c_name"`
+	Model                string    `db:"c_model"`
+}
+
 func appGetRides(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := ctx.Value("user").(*User)
 
-	rides := []Ride{}
+	rides := []getAppRidesRiseCharOwner{}
 	if err := db.SelectContext(
 		ctx,
 		&rides,
-		`SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC`,
+		`SELECT
+			r.id r_id,
+			r.pickup_latitude,
+			r.pickup_longitude,
+			r.destination_latitude,
+			r.destination_longitude,
+			r.evaluation,
+			r.created_at,
+			r.updated_at,
+			c.id c_id,
+			c.name c_name,
+			c.model c_model,
+			o.name o_name
+		FROM
+			rides r
+			JOIN chairs c on r.chair_id = c.id
+			JOIN owners o on c.owner_id = o.id
+		WHERE
+			r.user_id = ?
+		ORDER BY r.created_at DESC;`,
 		user.ID,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
@@ -205,7 +239,7 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 
 	items := []getAppRidesResponseItem{}
 	for _, ride := range rides {
-		status, err := noTxGetLatestRideStatus(ctx, db, ride.ID)
+		status, err := noTxGetLatestRideStatus(ctx, db, ride.RideId)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
@@ -221,7 +255,7 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 		}
 
 		item := getAppRidesResponseItem{
-			ID:                    ride.ID,
+			ID:                    ride.RideId,
 			PickupCoordinate:      Coordinate{Latitude: ride.PickupLatitude, Longitude: ride.PickupLongitude},
 			DestinationCoordinate: Coordinate{Latitude: ride.DestinationLatitude, Longitude: ride.DestinationLongitude},
 			Fare:                  fare,
@@ -231,22 +265,10 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 		}
 
 		item.Chair = getAppRidesResponseItemChair{}
-
-		chair := &Chair{}
-		if err := db.GetContext(ctx, chair, `SELECT * FROM chairs WHERE id = ?`, ride.ChairID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		item.Chair.ID = chair.ID
-		item.Chair.Name = chair.Name
-		item.Chair.Model = chair.Model
-
-		owner := &Owner{}
-		if err := db.GetContext(ctx, owner, `SELECT * FROM owners WHERE id = ?`, chair.OwnerID); err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		item.Chair.Owner = owner.Name
+		item.Chair.ID = ride.ChairId
+		item.Chair.Name = ride.ChairName
+		item.Chair.Model = ride.Model
+		item.Chair.Owner = ride.OwnerName
 
 		items = append(items, item)
 	}
@@ -991,7 +1013,7 @@ func calculateDiscountedFare(ctx context.Context, tx *sqlx.Tx, userID string, ri
 }
 
 // トランザクションを使わないver
-func noTxCalculateDiscountedFare(ctx context.Context, db *sqlx.DB, userID string, ride *Ride, pickupLatitude, pickupLongitude, destLatitude, destLongitude int) (int, error) {
+func noTxCalculateDiscountedFare(ctx context.Context, db *sqlx.DB, userID string, ride *getAppRidesRiseCharOwner, pickupLatitude, pickupLongitude, destLatitude, destLongitude int) (int, error) {
 	var coupon Coupon
 	discount := 0
 	if ride != nil {
@@ -1001,7 +1023,7 @@ func noTxCalculateDiscountedFare(ctx context.Context, db *sqlx.DB, userID string
 		pickupLongitude = ride.PickupLongitude
 
 		// すでにクーポンが紐づいているならそれの割引額を参照
-		if err := db.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.ID); err != nil {
+		if err := db.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.RideId); err != nil {
 			if !errors.Is(err, sql.ErrNoRows) {
 				return 0, err
 			}
