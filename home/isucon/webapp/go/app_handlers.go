@@ -301,15 +301,6 @@ func getLatestRideStatus(ctx context.Context, tx executableGet, rideID string) (
 	return status, nil
 }
 
-//トランザクションを使わないver
-func noTxGetLatestRideStatus(ctx context.Context, db *sqlx.DB , rideID string) (string, error) {
-	status := ""
-	if err := db.GetContext(ctx, &status, `SELECT status FROM ride_statuses WHERE ride_id = ? ORDER BY created_at DESC LIMIT 1`, rideID); err != nil {
-		return "", err
-	}
-	return status, nil
-}
-
 // トランザクションを使わないver
 func noTxGetLatestRideStatus(ctx context.Context, db *sqlx.DB, rideID string) (string, error) {
 	status := ""
