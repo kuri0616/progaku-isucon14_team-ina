@@ -212,25 +212,25 @@ func appGetRides(w http.ResponseWriter, r *http.Request) {
 		ctx,
 		&rides,
 		`SELECT
-					r.id r_id,
-					r.pickup_latitude,
-					r.pickup_longitude,
-					r.destination_latitude,
-					r.destination_longitude,
-					r.evaluation,
-					r.created_at,
-					r.updated_at,
-					c.id c_id,
-					c.name c_name,
-					c.model c_model,
-					o.name o_name
-				FROM
-					rides r
-					JOIN chairs c on r.chair_id = c.id
-					JOIN owners o on c.owner_id = o.id
-				WHERE
-					r.user_id = ?
-				ORDER BY r.created_at DESC;`,
+			r.id r_id,
+			r.pickup_latitude,
+			r.pickup_longitude,
+			r.destination_latitude,
+			r.destination_longitude,
+			r.evaluation,
+			r.created_at,
+			r.updated_at,
+			c.id c_id,
+			c.name c_name,
+			c.model c_model,
+			o.name o_name
+		FROM
+			rides r
+			JOIN chairs c on r.chair_id = c.id
+			JOIN owners o on c.owner_id = o.id
+		WHERE
+			r.user_id = ?
+		ORDER BY r.created_at DESC;`,
 		user.ID,
 	); err != nil {
 		writeError(w, http.StatusInternalServerError, err)
