@@ -35,6 +35,7 @@ CREATE TABLE chairs
   PRIMARY KEY (id)
 )
   COMMENT = '椅子情報テーブル';
+ALTER TABLE `chairs` ADD INDEX `access_token_idx` (`access_token`);
 
 DROP TABLE IF EXISTS chair_locations;
 CREATE TABLE chair_locations
@@ -47,6 +48,7 @@ CREATE TABLE chair_locations
   PRIMARY KEY (id)
 )
   COMMENT = '椅子の現在位置情報テーブル';
+ALTER TABLE `chair_locations` ADD INDEX `chair_id_idx` (`chair_id`);
 
 DROP TABLE IF EXISTS users;
 CREATE TABLE users
