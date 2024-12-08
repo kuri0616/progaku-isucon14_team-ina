@@ -665,6 +665,18 @@ type appGetNotificationResponseChairStats struct {
 	TotalEvaluationAvg float64 `json:"total_evaluation_avg"`
 }
 
+type appGetNotificationRideAndRideStatus struct {
+	RideId               string         `db:"r_id"`
+	CreatedAt            time.Time      `db:"created_at"`
+	UpdatedAt            time.Time      `db:"updated_at"`
+	PickupLatitude       int            `db:"pickup_latitude"`
+	PickupLongitude      int            `db:"pickup_longitude"`
+	DestinationLatitude  int            `db:"destination_latitude"`
+	DestinationLongitude int            `db:"destination_longitude"`
+	ChairID              sql.NullString `db:"chair_id"`
+	State                sql.NullString `db:"state"`
+}
+
 func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	user := ctx.Value("user").(*User)
@@ -676,8 +688,43 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	ride := &Ride{}
-	if err := tx.GetContext(ctx, ride, `SELECT * FROM rides WHERE user_id = ? ORDER BY created_at DESC LIMIT 1`, user.ID); err != nil {
+	ride := &appGetNotificationRideAndRideStatus{}
+	if err := tx.GetContext(
+		ctx,
+		ride,
+		`SELECT
+    r.id r_id,
+    r.created_at,
+    r.updated_at,
+    r.pickup_latitude,
+    r.pickup_longitude,
+    r.destination_latitude,
+    r.destination_longitude,
+    r.chair_id,
+    rs.status state
+FROM
+    rides r
+    LEFT OUTER JOIN ride_statuses rs
+        on r.id = rs.ride_id and
+           app_sent_at IS NULL
+    JOIN (
+        select
+            rs2.id,
+            row_number() over(
+				partition by r2.id
+				order by rs2.created_at desc
+			) row_num
+        from
+            rides r2
+            join ride_statuses rs2
+                on r2.id = rs2.ride_id
+    ) latest_rs
+        ON rs.id = latest_rs.id
+where
+    row_num = 1 and
+    user_id = ?`,
+		user.ID,
+	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusOK, &appGetNotificationResponse{
 				RetryAfterMs: 30,
@@ -690,9 +737,9 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 
 	yetSentRideStatus := RideStatus{}
 	status := ""
-	if err := tx.GetContext(ctx, &yetSentRideStatus, `SELECT * FROM ride_statuses WHERE ride_id = ? AND app_sent_at IS NULL ORDER BY created_at ASC LIMIT 1`, ride.ID); err != nil {
+	if ride.State.Valid == false {
 		if errors.Is(err, sql.ErrNoRows) {
-			status, err = getLatestRideStatus(ctx, tx, ride.ID)
+			status, err = getLatestRideStatus(ctx, tx, ride.RideId)
 			if err != nil {
 				writeError(w, http.StatusInternalServerError, err)
 				return
@@ -705,7 +752,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 		status = yetSentRideStatus.Status
 	}
 
-	fare, err := calculateDiscountedFare(ctx, tx, user.ID, ride, ride.PickupLatitude, ride.PickupLongitude, ride.DestinationLatitude, ride.DestinationLongitude)
+	fare, err := calculateDiscountedFareForAppGetNotification(ctx, tx, user.ID, ride, ride.PickupLatitude, ride.PickupLongitude, ride.DestinationLatitude, ride.DestinationLongitude)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
@@ -713,7 +760,7 @@ func appGetNotification(w http.ResponseWriter, r *http.Request) {
 
 	response := &appGetNotificationResponse{
 		Data: &appGetNotificationResponseData{
-			RideID: ride.ID,
+			RideID: ride.RideId,
 			PickupCoordinate: Coordinate{
 				Latitude:  ride.PickupLatitude,
 				Longitude: ride.PickupLongitude,
@@ -980,6 +1027,50 @@ func calculateDiscountedFare(ctx context.Context, tx *sqlx.Tx, userID string, ri
 
 		// すでにクーポンが紐づいているならそれの割引額を参照
 		if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.ID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return 0, err
+			}
+		} else {
+			discount = coupon.Discount
+		}
+	} else {
+		// 初回利用クーポンを最優先で使う
+		if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE user_id = ? AND code = 'CP_NEW2024' AND used_by IS NULL", userID); err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				return 0, err
+			}
+
+			// 無いなら他のクーポンを付与された順番に使う
+			if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE user_id = ? AND used_by IS NULL ORDER BY created_at LIMIT 1", userID); err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					return 0, err
+				}
+			} else {
+				discount = coupon.Discount
+			}
+		} else {
+			discount = coupon.Discount
+		}
+	}
+
+	meteredFare := farePerDistance * calculateDistance(pickupLatitude, pickupLongitude, destLatitude, destLongitude)
+	discountedMeteredFare := max(meteredFare-discount, 0)
+
+	return initialFare + discountedMeteredFare, nil
+}
+
+// appGetNotification用
+func calculateDiscountedFareForAppGetNotification(ctx context.Context, tx *sqlx.Tx, userID string, ride *appGetNotificationRideAndRideStatus, pickupLatitude, pickupLongitude, destLatitude, destLongitude int) (int, error) {
+	var coupon Coupon
+	discount := 0
+	if ride != nil {
+		destLatitude = ride.DestinationLatitude
+		destLongitude = ride.DestinationLongitude
+		pickupLatitude = ride.PickupLatitude
+		pickupLongitude = ride.PickupLongitude
+
+		// すでにクーポンが紐づいているならそれの割引額を参照
+		if err := tx.GetContext(ctx, &coupon, "SELECT * FROM coupons WHERE used_by = ?", ride.RideId); err != nil {
 			if !errors.Is(err, sql.ErrNoRows) {
 				return 0, err
 			}
