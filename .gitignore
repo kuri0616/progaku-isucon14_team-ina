@@ -156,3 +156,6 @@
 # vim関連
 *~
 *.sw[op]
+
+# ide
+.idea/
